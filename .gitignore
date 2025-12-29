@@ -9,3 +9,8 @@ data/
 logs/
 *.png
 *.html
+
+# PyInstaller
+dist/
+build/
+*.spec
