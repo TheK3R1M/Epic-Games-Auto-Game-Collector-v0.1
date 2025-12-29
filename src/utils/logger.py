@@ -4,11 +4,14 @@ import os
 from datetime import datetime
 
 
+from src.utils.paths import get_data_dir
+
+
 def setup_logger(name: str = "epic_games_collector") -> logging.Logger:
     """Logger'ı kur"""
     
     # Log dizinini oluştur
-    log_dir = "data/logs"
+    log_dir = os.path.join(get_data_dir(), "logs")
     os.makedirs(log_dir, exist_ok=True)
     
     # Logger oluştur

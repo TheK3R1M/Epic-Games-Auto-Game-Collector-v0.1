@@ -5,12 +5,19 @@ from cryptography.fernet import Fernet
 from typing import List, Dict, Optional
 from datetime import datetime
 from src.security.cookie_manager import CookieManager
+from src.utils.paths import get_data_dir
 
 
 class AccountManager:
     """Manage accounts: add, remove, encrypt."""
     
-    def __init__(self, accounts_file: str = "data/accounts.json", key_file: str = "data/key.key"):
+    def __init__(self, accounts_file: str = None, key_file: str = None):
+        data_dir = get_data_dir()
+        if accounts_file is None:
+            accounts_file = os.path.join(data_dir, "accounts.json")
+        if key_file is None:
+            key_file = os.path.join(data_dir, "key.key")
+            
         self.accounts_file = accounts_file
         self.key_file = key_file
         self.cipher = self._load_or_create_key()
@@ -21,7 +28,7 @@ class AccountManager:
     
     def _load_or_create_key(self) -> Fernet:
         """Load or create encryption key."""
-        os.makedirs("data", exist_ok=True)
+        os.makedirs(os.path.dirname(self.key_file), exist_ok=True)
         
         if os.path.exists(self.key_file):
             with open(self.key_file, 'rb') as f:

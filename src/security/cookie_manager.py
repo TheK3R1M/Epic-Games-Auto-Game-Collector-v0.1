@@ -3,14 +3,16 @@ import json
 import os
 from datetime import datetime, timedelta
 from pathlib import Path
+from src.utils.paths import get_data_dir
 
 
 class CookieManager:
     """Store and manage cookies."""
     
-    def __init__(self, cookies_dir: str = "data/cookies"):
-        # Use absolute path to avoid directory ambiguity
-        self.cookies_dir = os.path.abspath(os.path.join(os.getcwd(), cookies_dir))
+    def __init__(self, cookies_dir: str = None):
+        if cookies_dir is None:
+            cookies_dir = os.path.join(get_data_dir(), "cookies")
+        self.cookies_dir = cookies_dir
         os.makedirs(self.cookies_dir, exist_ok=True)
         print(f"📁 Cookie storage: {self.cookies_dir}")
     

@@ -17,7 +17,14 @@ A robust, secure, and fully automated tool to claim free weekly games from the E
 - **Python**: 3.10 or higher
 - **Browser**: Google Chrome (installed standardly)
 
-## 🚀 Quick Start
+## 📦 Installation (Executable)
+
+1. Download `EpicGamesCollector.exe` from the [Releases](https://github.com/TheK3R1M/Epic-Games-Auto-Game-Collector/releases) page.
+2. Place it in a dedicated folder (e.g., `Desktop\EpicCollector`).
+3. Run the executable.
+4. It will automatically create a `data/` folder next to it to store your encrypted accounts and cookies safely.
+
+## 🚀 Quick Start (Source Code)
 
 ### 1. Clone & Setup
 ```bash
