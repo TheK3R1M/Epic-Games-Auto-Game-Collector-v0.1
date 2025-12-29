@@ -202,8 +202,7 @@ class EpicDrissionConnector:
                  self.page.get(login_url, timeout=15)
 
             print("\n" + "!"*40)
-            print("   KÜÇÜK PENCEREDE GİRİŞ YAPIN")
-            print("   (PLEASE SIGN IN IN THE SMALL BROWSER WINDOW)")
+            print("   PLEASE SIGN IN IN THE SMALL BROWSER WINDOW")
             print("!"*40 + "\n")
             
             print("   ⏳ Monitoring login state (Max 5 mins)...")
@@ -593,11 +592,25 @@ class EpicDrissionConnector:
                         if self.page.ele('text:-100%'): price_valid = True
 
                     # --- DEBUG: DUMP HTML ---
-                    try:
-                        with open(f"checkout_full_{name}.html", "w", encoding="utf-8") as f:
-                            f.write(self.page.html)
-                        print(f"   📄 Checkout HTML dumped to checkout_full_{name}.html")
                     except: pass
+
+                    # --- DEEP DEBUGGING: DUMP IFRAME & BUTTON ANALYSIS ---
+                    try:
+                        # Find the checkout iframe specifically
+                        checkout_frame = None
+                        for f in self.page.frames:
+                            if any(x in f.url for x in ['/purchase', '/checkout']) or 'payment' in f.url:
+                                checkout_frame = f
+                                break
+                        
+                        if checkout_frame:
+                            with open(f"debug_iframe_checkout_{name}.html", "w", encoding="utf-8") as f:
+                                f.write(checkout_frame.html)
+                            print(f"   🐞 DEBUG: Checkout iframe HTML dumped to debug_iframe_checkout_{name}.html")
+                        else:
+                             print("   🐞 DEBUG: No specific checkout iframe found for dumping.")
+                    except Exception as e:
+                        print(f"   🐞 DEBUG ERROR: {e}")
 
                     # --- PLACE ORDER ---
                     print("   🔎 Looking for 'Place Order' button (Standardizing detection)...")
@@ -615,7 +628,7 @@ class EpicDrissionConnector:
                                     if btn: return btn
                                     
                                     # Try by exact text match inside the specific button area
-                                    # "SİPARİŞ VER" is the specific label in Turkish
+                                    # Multilingual support (Turkish/English)
                                     btn_text_el = frame.ele('text=SİPARİŞ VER') or \
                                                   frame.ele('text=Place Order') or \
                                                   frame.ele('text=Siparişi Ver')
@@ -643,6 +656,17 @@ class EpicDrissionConnector:
                         return None
 
                     place_btn = find_order_btn()
+
+                    # DEBUG: Analyze found button
+                    if place_btn:
+                         try:
+                             print(f"   🐞 DEBUG: Found Button Info:")
+                             print(f"      - Tag: {place_btn.tag}")
+                             print(f"      - Text: {place_btn.text}")
+                             print(f"      - Classes: {place_btn.attr('class')}")
+                             print(f"      - ID: {place_btn.attr('id')}")
+                             print(f"      - Data-TestID: {place_btn.attr('data-testid')}")
+                         except: pass
 
                     if place_btn:
                         print(f"   🖱️ Preparing to click 'Place Order' ({place_btn.text})...")
