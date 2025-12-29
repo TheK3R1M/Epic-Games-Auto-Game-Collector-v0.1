@@ -1,0 +1,11 @@
+playwright>=1.40.0
+playwright-stealth>=0.1.0
+cryptography>=41.0.0
+requests>=2.31.0
+PySimpleGUI>=4.60.0
+APScheduler>=3.10.0
+python-dotenv>=1.0.0
+sqlalchemy>=2.0.0
+
+selenium>=4.15.0
+undetected-chromedriver>=3.5.4

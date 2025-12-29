@@ -1,0 +1,11 @@
+# Python base
+__pycache__/
+*.py[cod]
+.env
+key.key
+data/
+*.json
+!requirements.txt
+logs/
+*.png
+*.html
