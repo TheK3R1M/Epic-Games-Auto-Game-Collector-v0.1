@@ -2,12 +2,15 @@ import json
 import os
 from datetime import datetime
 from typing import List, Dict
+from src.utils.paths import get_data_dir
 
 
 class ClaimedHistory:
     """Persist and query claimed free games per account."""
 
-    def __init__(self, path: str = "data/claimed_history.json"):
+    def __init__(self, path: str = None):
+        if path is None:
+            path = os.path.join(get_data_dir(), "claimed_history.json")
         self.path = path
         os.makedirs(os.path.dirname(self.path), exist_ok=True)
         self._data = {"claims": []}

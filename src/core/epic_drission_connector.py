@@ -110,7 +110,9 @@ class EpicDrissionConnector:
                         self._save_cookies(email) 
                         return True
                     else:
-                        print(f"   ❌ Session re-entry failed. Redirected to: {self.page.url}")
+                        print(f"   ❌ Session re-entry failed. Cookies might be expired.")
+                        # HOTFIX: Delete invalid cookies to prevent loop
+                        self.cookie_manager.delete_cookies(email)
                         return False
                 except Exception as e:
                     print(f"⚠️ Error during secure cookie injection for {email}: {e}")
@@ -377,67 +379,84 @@ class EpicDrissionConnector:
         return []
 
     def get_free_games(self) -> List[Dict]:
-        """Scrape free games using DrissionPage."""
-        print("🎮 Checking free games...")
+        """Scrape free games using robust DOM method first, API fallback."""
+        print("🎮 Checking free games (DOM Method)...")
         self.page.get("https://store.epicgames.com/en-US/free-games")
-        time.sleep(3)
+        time.sleep(5)
         
         games = []
         try:
-            # Use logic similar to 'DOM fallback' from original connector
-            # Look for cards with "Free Now"
+            # HOTFIX: Scrape href directly to avoid 404s
+            # Find the 'Free Now' badges
+            badges = self.page.eles('text:Free Now')
             
-            # DrissionPage .eles() finds all
-            # Assuming structure: visible 'Free Now' text in some span
-            
-            # Strategy: Find all links containing '/p/' that are inside a container with 'Free Now'
-            # This is tricky with simple selectors. 
-            # Alternative: Get all "VaultOfferCard" equivalent
-            
-            # Let's try searching text "Free Now" and going up to the card
-            free_badges = self.page.eles('text:Free Now')
-            for badge in free_badges:
-                # Go up to finding the link
-                # .parent() or .prev()... 
-                # This depends heavily on DOM structure which changes.
-                
-                # Simplified: Get all links, check if they look like game pages and have price 0
-                pass
-
-            # Better Strategy: JSON API approach using DrissionPage
-            # We can request the API URL directly since DrissionPage behaves like a browser
-            api_url = 'https://store-site-backend-static-ipv4.ak.epicgames.com/freeGamesPromotions?locale=en-US&country=US&allowCountries=US'
-            self.page.get(api_url)
-            try:
-                # If browser displays JSON, we can get innerText of body
-                content = self.page.ele('tag:body').text
-                data = json.loads(content)
-                
-                # Parsing logic (same as original)
-                elements = data.get('data', {}).get('Catalog', {}).get('searchStore', {}).get('elements', [])
-                for el in elements:
-                    promos = el.get('promotions')
-                    if not promos: continue
-                    offers = promos.get('promotionalOffers', [])
-                    if offers and offers[0].get('promotionalOffers'):
-                        # It has offers
-                        title = el.get('title')
-                        slug = el.get('productSlug') or el.get('urlSlug')
-                        if not slug: continue
+            for badge in badges:
+                try:
+                    # We need to find the parent <a> tag.
+                    # Usually it's up 3-5 levels or so.
+                    # Safer: Find the closest 'a' ancestor with an href
+                    card_link = badge.parent('tag:a') 
+                    if not card_link:
+                         # Try going up a few levels manually if direct parent search fails
+                         curr = badge
+                         for _ in range(6):
+                             curr = curr.parent()
+                             if curr.tag == 'a':
+                                 card_link = curr
+                                 break
+                    
+                    if card_link and card_link.attr('href'):
+                        raw_url = card_link.attr('href')
+                        title = card_link.attr('aria-label') or "Free Game"
+                        title = title.replace("Free Game, ", "").replace(", Free Game", "")
                         
-                        # Price check (ensure it is actually free)
-                        price = el.get('price', {}).get('totalPrice', {}).get('discountPrice', -1)
-                        if price == 0:
-                            url = f"https://store.epicgames.com/en-US/p/{slug}"
-                            games.append({'name': title, 'url': url})
-            except Exception as e:
-                print(f"   ⚠️ API parse failed: {e}")
+                        if not raw_url.startswith("http"):
+                             game_url = f"https://store.epicgames.com{raw_url}"
+                        else:
+                             game_url = raw_url
+                        
+                        # Filter out non-game links
+                        if "/p/" in game_url or "/bundles/" in game_url:
+                             print(f"   found: {title} -> {game_url}")
+                             games.append({'name': title, 'url': game_url})
+
+                except Exception as e:
+                    print(f"   ⚠️ extraction error: {e}")
+                    pass
+            
+            if not games:
+                print("   ⚠️ DOM scrape yielded 0 games. Using strict API fallback.")
+                return self._get_free_games_api_fallback()
                 
             return games
             
         except Exception as e:
             print(f"❌ Error getting games: {e}")
             return []
+
+    def _get_free_games_api_fallback(self):
+        """Original API method as fallback."""
+        games = []
+        try:
+            api_url = 'https://store-site-backend-static-ipv4.ak.epicgames.com/freeGamesPromotions?locale=en-US&country=US&allowCountries=US'
+            self.page.get(api_url)
+            content = self.page.ele('tag:body').text
+            data = json.loads(content)
+            elements = data.get('data', {}).get('Catalog', {}).get('searchStore', {}).get('elements', [])
+            for el in elements:
+                promos = el.get('promotions')
+                if not promos: continue
+                offers = promos.get('promotionalOffers', [])
+                if offers and offers[0].get('promotionalOffers'):
+                    title = el.get('title')
+                    slug = el.get('productSlug') or el.get('urlSlug')
+                    if not slug: continue
+                    price = el.get('price', {}).get('totalPrice', {}).get('discountPrice', -1)
+                    if price == 0:
+                        url = f"https://store.epicgames.com/en-US/p/{slug}"
+                        games.append({'name': title, 'url': url})
+        except: pass
+        return games
 
     def claim_game(self, url: str, name: str) -> bool:
         """Claim a specific game with robust login enforcement."""

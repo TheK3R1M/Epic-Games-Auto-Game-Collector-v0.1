@@ -82,8 +82,9 @@ class DashboardFrame(ctk.CTkFrame):
         self.console.grid(row=4, column=0, padx=20, pady=(5, 20), sticky="nsew")
         self.console.configure(state="disabled")
 
-        # Redirect stdout
+        # Redirect stdout and stderr
         sys.stdout = TextRedirector(self.console, "stdout")
+        sys.stderr = TextRedirector(self.console, "stderr")
 
     def toggle_claim(self):
         if not self.is_running:

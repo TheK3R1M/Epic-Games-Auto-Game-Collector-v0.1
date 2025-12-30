@@ -3,6 +3,7 @@ import customtkinter as ctk
 import json
 import os
 from datetime import datetime
+from src.utils.paths import get_data_dir
 
 class HistoryFrame(ctk.CTkFrame):
     def __init__(self, master):
@@ -49,7 +50,8 @@ class HistoryFrame(ctk.CTkFrame):
         ctk.CTkLabel(self.table_frame, text="Date", font=ctk.CTkFont(weight="bold")).grid(row=0, column=2, padx=10, pady=5, sticky="w")
 
         # Load from JSON
-        history_path = os.path.join(os.getcwd(), "claimed_history.json")
+        data_dir = get_data_dir()
+        history_path = os.path.join(data_dir, "claimed_history.json")
         search_query = self.entry_search.get().lower()
         
         if not os.path.exists(history_path):
