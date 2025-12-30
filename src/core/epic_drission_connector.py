@@ -406,10 +406,34 @@ class EpicDrissionConnector:
                                  break
                     
                     if card_link and card_link.attr('href'):
-                        raw_url = card_link.attr('href')
-                        title = card_link.attr('aria-label') or "Free Game"
-                        title = title.replace("Free Game, ", "").replace(", Free Game", "")
+                        # --- FILTER: EXCLUDE COMING SOON ---
+                        card_text = card_link.text.lower()
+                        if "coming soon" in card_text or "yakında" in card_text:
+                            print(f"   ⚠️ Skipping 'Coming Soon' game.")
+                            continue
+
+                        # --- TITLE EXTRACTION ---
+                        # Try to find the h6 or class containing title within the card
+                        title_el = card_link.ele('tag:h6') or \
+                                   card_link.ele('.css-1h2ruwl') or \
+                                   card_link.ele('[data-testid=offer-title-info-title]')
                         
+                        title = ""
+                        if title_el:
+                            title = title_el.text.strip()
+                        
+                        if not title:
+                            # Fallback to aria-label cleaning
+                            raw_title = card_link.attr('aria-label') or "Free Game"
+                            title = raw_title.replace("Free Game, ", "").replace(", Free Game", "")
+                            
+                        # Final Cleanup
+                        if "claim free" in title.lower():
+                            # If we still got garbage, try checking image alt
+                            img = card_link.ele('tag:img')
+                            if img: title = img.attr('alt')
+                            
+                        raw_url = card_link.attr('href')
                         if not raw_url.startswith("http"):
                              game_url = f"https://store.epicgames.com{raw_url}"
                         else:

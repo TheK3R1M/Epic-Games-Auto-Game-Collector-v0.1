@@ -63,9 +63,19 @@ class DashboardFrame(ctk.CTkFrame):
         # Update stats initially
         self.update_stats()
 
+        # Auto-Pilot Section (New)
+        self.pilot_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self.pilot_frame.grid(row=2, column=0, padx=20, pady=(10, 0), sticky="ew")
+        
+        self.pilot_var = ctk.BooleanVar(value=False)
+        self.switch_pilot = ctk.CTkSwitch(self.pilot_frame, text="Auto-Pilot Mode (Hide to Tray)", command=self.toggle_pilot, variable=self.pilot_var, font=ctk.CTkFont(weight="bold"))
+        self.switch_pilot.pack(side="left")
+        
+        ctk.CTkLabel(self.pilot_frame, text="(Checks every 6 hours)", text_color="gray").pack(side="left", padx=10)
+
         # Controls Area
         self.controls_frame = ctk.CTkFrame(self)
-        self.controls_frame.grid(row=2, column=0, padx=20, pady=10, sticky="ew")
+        self.controls_frame.grid(row=3, column=0, padx=20, pady=10, sticky="ew")
         
         self.btn_start = ctk.CTkButton(self.controls_frame, text="Start Claiming", command=self.toggle_claim, height=40, font=ctk.CTkFont(size=14, weight="bold"))
         self.btn_start.pack(side="left", padx=20, pady=20)
@@ -76,10 +86,12 @@ class DashboardFrame(ctk.CTkFrame):
 
         # Console Log
         self.log_label = ctk.CTkLabel(self, text="Activity Log:", font=ctk.CTkFont(size=14, weight="bold"))
-        self.log_label.grid(row=3, column=0, padx=20, pady=(10, 0), sticky="w")
+        # Console Log
+        self.log_label = ctk.CTkLabel(self, text="Activity Log:", font=ctk.CTkFont(size=14, weight="bold"))
+        self.log_label.grid(row=4, column=0, padx=20, pady=(10, 0), sticky="w")
 
         self.console = ctk.CTkTextbox(self, font=ctk.CTkFont(family="Consolas", size=12))
-        self.console.grid(row=4, column=0, padx=20, pady=(5, 20), sticky="nsew")
+        self.console.grid(row=5, column=0, padx=20, pady=(5, 20), sticky="nsew")
         self.console.configure(state="disabled")
 
         # Redirect stdout and stderr
@@ -108,6 +120,56 @@ class DashboardFrame(ctk.CTkFrame):
         print("\n[GUI] Stopping safely (wait for current task)...")
         # In a real app we would cancel the asyncio task here
 
+    def toggle_pilot(self):
+        """Handle Auto-Pilot toggle."""
+        if self.pilot_var.get():
+            # Enable Auto-Pilot
+            print("\n✈️ Auto-Pilot ENABLED. Hiding window and entering background loop...")
+            self.master.withdraw() # Hide window
+            threading.Thread(target=self._run_pilot_loop, daemon=True).start()
+        else:
+            # Disable
+            print("\n✈️ Auto-Pilot DISABLED.")
+            # Breaking the loop requires a flag or just letting it finish wait
+            # Since we can't easily kill threads, we rely on the var check inside loop
+
+    def _run_pilot_loop(self):
+        """Background loop for Auto-Pilot."""
+        import time
+        asyncio.set_event_loop(self.loop)
+        
+        while self.pilot_var.get():
+            try:
+                print(f"\n[{datetime.now().strftime('%H:%M')}] ✈️ Pilot: Checking for free games...")
+                
+                # Check directly using connector (headless check basically)
+                # But we can reuse the claimer logic
+                
+                # If we find games, we should probably unhide to show activity
+                # Or just run silently. User requested: "uygulamayı açıp. otomatik olarak alması gerekiyor"
+                # So we show it.
+                
+                self.after(0, self.master.deiconify)
+                
+                # Run the claim process
+                self.loop.run_until_complete(self.claimer.claim_free_games_for_all_accounts())
+                
+                print("✈️ Pilot: Check complete. Sleeping for 6 hours...")
+                
+                # If user didn't disable it during run, hide again
+                if self.pilot_var.get():
+                     self.after(0, self.master.withdraw)
+                     
+                # Sleep in chunks to check for disable
+                for _ in range(6 * 60): # 6 hours in minutes
+                    if not self.pilot_var.get(): break
+                    time.sleep(60) 
+                    
+            except Exception as e:
+                print(f"✈️ Pilot Error: {e}")
+                self.after(0, self.master.deiconify) # Show window on error
+                time.sleep(60) # Wait a bit before retry
+
     def _run_async_process(self):
         asyncio.set_event_loop(self.loop)
         try:
@@ -120,6 +182,10 @@ class DashboardFrame(ctk.CTkFrame):
             # Since CustomTkinter isn't perfectly thread-safe, direct config usually works but explicit after() is better.
             # For simplicity in this demo, direct config might work or we rely on user clicking Stop.
             print("\n[GUI] Process Finished.")
+            
+            # If pilot mode was enabled and we just finished manual run, do NOT hide.
+            # Only hide if we are in pilot loop.
+            
             # Reset UI
             self.after(0, self._reset_ui)
 
