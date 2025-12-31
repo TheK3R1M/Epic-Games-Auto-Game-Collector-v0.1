@@ -134,4 +134,4 @@ class GameClaimerApp(ctk.CTk):
 if __name__ == "__main__":
     app = GameClaimerApp()
     app.run()
-```
+
