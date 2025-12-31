@@ -103,8 +103,35 @@ class GameClaimerApp(ctk.CTk):
             frame.lift()
 
     def run(self):
+        # Handle Close Event for Tray
+        self.protocol("WM_DELETE_WINDOW", self.on_closing)
         self.mainloop()
+        
+    def on_closing(self):
+        """Handle window close event."""
+        from src.utils.config import ConfigManager
+        config = ConfigManager()
+        
+        if config.get("minimize_to_tray", True):
+            # Minimize to tray
+            # Ensure tray icon exists (managed by Dashboard for now)
+            dashboard = self.frames.get("dashboard")
+            if dashboard:
+                try:
+                    dashboard.create_tray_icon()
+                    self.withdraw()
+                    print("\n[GUI] Minimized to tray.")
+                    from tkinter import messagebox
+                    # Optional toast or just console
+                    return
+                except Exception as e:
+                    print(f"Error minimizing to tray: {e}")
+        
+        # Quit
+        self.quit()
+        sys.exit(0)
 
 if __name__ == "__main__":
     app = GameClaimerApp()
     app.run()
+```

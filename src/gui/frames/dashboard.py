@@ -136,26 +136,11 @@ class DashboardFrame(ctk.CTkFrame):
             # Enable Auto-Pilot
             print("\n✈️ Auto-Pilot ENABLED. Hiding window to System Tray...")
             
-            # Initialize Tray
-            from src.gui.tray import SystemTrayIcon
-            
-            def show_callback():
-                # Called when user clicks "Show" in tray
-                self.master.deiconify()
-                # We don't disable pilot var automatically, app just shows up
-                # But tray icon should disappear? 
-                # Our tray logic stops itself on show.
-                
-            def exit_callback():
-                # Kill app
-                self.master.quit()
-                sys.exit(0)
-
-            self.tray = SystemTrayIcon(self.master, show_callback, exit_callback)
-            self.tray.setup()
-            self.tray.run()
-            
+            self.create_tray_icon()
             self.master.withdraw() # Hide window
+            threading.Thread(target=self._run_pilot_loop, daemon=True).start()
+        else:
+            # Disable
             threading.Thread(target=self._run_pilot_loop, daemon=True).start()
         else:
             # Disable
@@ -201,11 +186,15 @@ class DashboardFrame(ctk.CTkFrame):
 
                 # Notification
                 if claimed_names and hasattr(self, 'tray') and self.tray and self.tray.icon:
-                    distinct_games = list(set(claimed_names))
-                    msg = f"Successfully claimed: {', '.join(distinct_games)}"
-                    try:
-                        self.tray.icon.notify(msg, "Epic Games Collected! 🎁")
-                    except: pass
+                     # Check config
+                     from src.utils.config import ConfigManager
+                     config = ConfigManager()
+                     if config.get("notifications", True):
+                        distinct_games = list(set(claimed_names))
+                        msg = f"Successfully claimed: {', '.join(distinct_games)}"
+                        try:
+                            self.tray.icon.notify(msg, "Epic Games Collected! 🎁")
+                        except: pass
                 
                 # Calculate sleep time
                 sleep_seconds = 6 * 3600 # Default 6 hours
@@ -272,6 +261,31 @@ class DashboardFrame(ctk.CTkFrame):
             self.lbl_acc_val.configure(text=str(len(accounts)))
         except Exception:
             pass
+
+    def create_tray_icon(self):
+        """Ensure Tray icon is running."""
+        if hasattr(self, 'tray') and self.tray and self.tray.icon:
+            return # Already running
+            
+        from src.gui.tray import SystemTrayIcon
+        
+        def show_callback():
+            self.master.deiconify()
+            # If we are NOT in pilot mode, maybe we destroy tray on show?
+            # But if pilot is ON, tray should stay?
+            # Current implementation of 'SystemTrayIcon' might be blocking or thread-based.
+            # Let's check tray.py. As seen in previous context, it likely uses pystray.
+            # Usually pystray.run() blocks. So it should run in thread if blocking, 
+            # Or if tray.py handles it.
+            # The previous code had self.tray.run().
+            
+        def exit_callback():
+            self.master.quit()
+            sys.exit(0)
+
+        self.tray = SystemTrayIcon(self.master, show_callback, exit_callback)
+        self.tray.setup()
+        self.tray.run()
 
     def _reset_ui(self):
         self.btn_start.configure(text="Start Claiming", fg_color=['#3B8ED0', '#1F6AA5'], hover_color=['#36719F', '#144870'])

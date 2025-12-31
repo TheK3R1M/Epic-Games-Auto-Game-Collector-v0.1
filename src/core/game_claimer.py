@@ -159,26 +159,34 @@ class GameClaimer:
         
         accounts = self.account_manager.get_all_accounts()
         
-        # Run accounts sequentially to avoid browser collision and Epic detection
-        print(f"\n🚀 Starting {len(accounts)} account(s) sequentially...\n")
+        # Run accounts concurrently with Semaphore
+        print(f"\n🚀 Starting {len(accounts)} account(s) using Parallel Processing (Limit: 3)...\n")
         
+        # Filter only active
+        active_accounts = [acc for acc in accounts if acc.get("status") == "active"]
+        skipped_count = len(accounts) - len(active_accounts)
+        if skipped_count > 0:
+            print(f"⏩ Skipped {skipped_count} disabled account(s).")
+            
         all_results = []
-        for account in accounts:
-            email = account["email"]
-            try:
-                result = await self.claim_free_games_for_account(email)
-                all_results.append(result)
-            except Exception as e:
-                print(f"❌ Unhandled error for {email}: {e}")
-                all_results.append({
-                    "email": email,
-                    "status": "error",
-                    "claimed_games": [], # Changed from 'claimed' to 'claimed_games' for consistency
-                    "already_owned": [], # Changed from 'owned' to 'already_owned' for consistency
-                    "errors": [str(e)]
-                })
-            # Brief pause between accounts
-            await asyncio.sleep(2)
+        sem = asyncio.Semaphore(3) # Max 3 browsers
+
+        async def limited_claim(account):
+            async with sem:
+                try:
+                    res = await self.claim_free_games_for_account(account["email"])
+                    return res
+                except Exception as e:
+                    print(f"❌ Worker error: {e}")
+                    return Exception(f"Worker failed: {e}")
+
+        tasks = [limited_claim(acc) for acc in active_accounts]
+        if tasks:
+             all_results = await asyncio.gather(*tasks)
+        else:
+             print("⚠️ No active accounts to process.")
+        
+        # Original sequential logic removed
         
         # Deduplicate by real account key
         processed_keys = set()

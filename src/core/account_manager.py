@@ -162,3 +162,13 @@ class AccountManager:
     def check_cookie_expiry(self, email: str) -> int:
         """Check days until cookie expiry. Returns -1 if invalid."""
         return self.cookie_manager.get_expiry_days(email)
+
+    def toggle_account_status(self, email: str, active: bool):
+        """Toggle account active status."""
+        status = "active" if active else "disabled"
+        for acc in self.accounts:
+            if acc["email"] == email:
+                acc["status"] = status
+                break
+        self._save_accounts()
+        print(f"🔄 Account {email} status changed to: {status}")
