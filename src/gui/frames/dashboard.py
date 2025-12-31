@@ -98,10 +98,10 @@ class DashboardFrame(ctk.CTkFrame):
         self.log_label = ctk.CTkLabel(self, text="Activity Log:", font=ctk.CTkFont(size=14, weight="bold"))
         # Console Log
         self.log_label = ctk.CTkLabel(self, text="Activity Log:", font=ctk.CTkFont(size=14, weight="bold"))
-        self.log_label.grid(row=4, column=0, padx=20, pady=(10, 0), sticky="w")
+        self.log_label.grid(row=5, column=0, padx=20, pady=(10, 0), sticky="w")
 
         self.console = ctk.CTkTextbox(self, font=ctk.CTkFont(family="Consolas", size=12))
-        self.console.grid(row=5, column=0, padx=20, pady=(5, 20), sticky="nsew")
+        self.console.grid(row=6, column=0, padx=20, pady=(5, 20), sticky="nsew")
         self.console.configure(state="disabled")
 
         # Redirect stdout and stderr
