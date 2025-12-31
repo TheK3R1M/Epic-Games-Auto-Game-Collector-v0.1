@@ -141,9 +141,6 @@ class DashboardFrame(ctk.CTkFrame):
             threading.Thread(target=self._run_pilot_loop, daemon=True).start()
         else:
             # Disable
-            threading.Thread(target=self._run_pilot_loop, daemon=True).start()
-        else:
-            # Disable
             print("\n✈️ Auto-Pilot DISABLED.")
             # If the user toggles it OFF while window is open, ensure tray is gone (it should be)
             try:
