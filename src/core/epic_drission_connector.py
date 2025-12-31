@@ -382,7 +382,12 @@ class EpicDrissionConnector:
         """Scrape free games using robust DOM method first, API fallback."""
         print("🎮 Checking free games (DOM Method)...")
         self.page.get("https://store.epicgames.com/en-US/free-games")
-        time.sleep(5)
+        # Optimization: Wait for 'Free Now' text instead of hard sleep
+        # timeout=10 is safe.
+        if self.page.wait.ele('text:Free Now', timeout=10):
+             print("   ✅ Page loaded.")
+        else:
+             print("   ⚠️ Page load slow, proceeding...")
         
         games = []
         try:
@@ -448,10 +453,54 @@ class EpicDrissionConnector:
                     print(f"   ⚠️ extraction error: {e}")
                     pass
             
+            # --- TIMER SCRAPING (Smart Pilot Data) ---
+            # Try to find "Unlocking in" or "Free Now until"
+            next_unlock_str = None
+            try:
+                # 1. Unlocking in... (Countdown)
+                # Selectors: [data-testid="timer-remaining-days"], etc.
+                days_el = self.page.ele('[data-testid=timer-remaining-days]')
+                if days_el:
+                    # If countdown exists, we can calculate seconds
+                    d = int(days_el.text or 0)
+                    h = int(self.page.ele('[data-testid=timer-remaining-hours]').text or 0)
+                    m = int(self.page.ele('[data-testid=timer-remaining-minutes]').text or 0)
+                    s = int(self.page.ele('[data-testid=timer-remaining-seconds]').text or 0)
+                    
+                    total_seconds = (d*86400) + (h*3600) + (m*60) + s
+                    # Return as special metadata in the list if possible, or just print for now?
+                    # Better: Return a tuple or dict. But signature is List[Dict].
+                    # We can append a special "metadata" dict at the end? Or attach to first game?
+                    # Let's attach to the first game if exists, or return separate (breaking change).
+                    # Safest: Attach 'next_unlock' to ALL games found.
+                    from datetime import datetime, timedelta
+                    unlock_dt = datetime.now() + timedelta(seconds=total_seconds)
+                    next_unlock_str = unlock_dt.isoformat()
+                    print(f"   ⏳ Next unlock in: {d}d {h}h {m}m {s}s ({next_unlock_str})")
+
+                # 2. If no countdown, maybe "Free Now - Dec 31 at 07:00 PM"
+                # This helps "Current Game End"
+                # <time datetime="2025-12-31T16:00:00.000Z">
+                # We want the *second* time element usually (End time)
+                times = self.page.eles('tag:time')
+                promo_end_str = None
+                if times and len(times) >= 2:
+                    # Usually pairs: Start - End. 
+                    # We grab the last one associated with the free banner? Hard to link.
+                    # Just grab the next future date from list?
+                    pass
+            except Exception as e:
+                print(f"   ⚠️ Timer scrape error: {e}")
+
             if not games:
                 print("   ⚠️ DOM scrape yielded 0 games. Using strict API fallback.")
                 return self._get_free_games_api_fallback()
-                
+            
+            # Attach timer info to games for Dashboard to use
+            if next_unlock_str:
+                for g in games:
+                    g['next_unlock'] = next_unlock_str
+
             return games
             
         except Exception as e:

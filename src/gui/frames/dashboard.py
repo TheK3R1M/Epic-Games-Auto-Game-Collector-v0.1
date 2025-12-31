@@ -63,9 +63,19 @@ class DashboardFrame(ctk.CTkFrame):
         # Update stats initially
         self.update_stats()
 
+        # Timer Info UI
+        self.timer_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self.timer_frame.grid(row=2, column=0, padx=20, pady=(0, 10), sticky="ew")
+        
+        self.lbl_next_unlock = ctk.CTkLabel(self.timer_frame, text="Next Unlock: Calculating...", text_color="gray")
+        self.lbl_next_unlock.pack(side="left")
+        
+        # self.lbl_current_ends = ctk.CTkLabel(self.timer_frame, text="Ends: ...", text_color="gray")
+        # self.lbl_current_ends.pack(side="right")
+
         # Auto-Pilot Section (New)
         self.pilot_frame = ctk.CTkFrame(self, fg_color="transparent")
-        self.pilot_frame.grid(row=2, column=0, padx=20, pady=(10, 0), sticky="ew")
+        self.pilot_frame.grid(row=3, column=0, padx=20, pady=(10, 0), sticky="ew")
         
         self.pilot_var = ctk.BooleanVar(value=False)
         self.switch_pilot = ctk.CTkSwitch(self.pilot_frame, text="Auto-Pilot Mode (Hide to Tray)", command=self.toggle_pilot, variable=self.pilot_var, font=ctk.CTkFont(weight="bold"))
@@ -75,7 +85,7 @@ class DashboardFrame(ctk.CTkFrame):
 
         # Controls Area
         self.controls_frame = ctk.CTkFrame(self)
-        self.controls_frame.grid(row=3, column=0, padx=20, pady=10, sticky="ew")
+        self.controls_frame.grid(row=4, column=0, padx=20, pady=10, sticky="ew")
         
         self.btn_start = ctk.CTkButton(self.controls_frame, text="Start Claiming", command=self.toggle_claim, height=40, font=ctk.CTkFont(size=14, weight="bold"))
         self.btn_start.pack(side="left", padx=20, pady=20)
@@ -124,51 +134,112 @@ class DashboardFrame(ctk.CTkFrame):
         """Handle Auto-Pilot toggle."""
         if self.pilot_var.get():
             # Enable Auto-Pilot
-            print("\n✈️ Auto-Pilot ENABLED. Hiding window and entering background loop...")
+            print("\n✈️ Auto-Pilot ENABLED. Hiding window to System Tray...")
+            
+            # Initialize Tray
+            from src.gui.tray import SystemTrayIcon
+            
+            def show_callback():
+                # Called when user clicks "Show" in tray
+                self.master.deiconify()
+                # We don't disable pilot var automatically, app just shows up
+                # But tray icon should disappear? 
+                # Our tray logic stops itself on show.
+                
+            def exit_callback():
+                # Kill app
+                self.master.quit()
+                sys.exit(0)
+
+            self.tray = SystemTrayIcon(self.master, show_callback, exit_callback)
+            self.tray.setup()
+            self.tray.run()
+            
             self.master.withdraw() # Hide window
             threading.Thread(target=self._run_pilot_loop, daemon=True).start()
         else:
             # Disable
             print("\n✈️ Auto-Pilot DISABLED.")
-            # Breaking the loop requires a flag or just letting it finish wait
-            # Since we can't easily kill threads, we rely on the var check inside loop
+            # If the user toggles it OFF while window is open, ensure tray is gone (it should be)
+            try:
+                if hasattr(self, 'tray') and self.tray:
+                    self.tray.stop()
+            except: pass
 
     def _run_pilot_loop(self):
-        """Background loop for Auto-Pilot."""
+        """Background loop for Auto-Pilot (Smart Mode)."""
         import time
+        from datetime import datetime, timedelta
         asyncio.set_event_loop(self.loop)
         
         while self.pilot_var.get():
             try:
-                print(f"\n[{datetime.now().strftime('%H:%M')}] ✈️ Pilot: Checking for free games...")
-                
-                # Check directly using connector (headless check basically)
-                # But we can reuse the claimer logic
-                
-                # If we find games, we should probably unhide to show activity
-                # Or just run silently. User requested: "uygulamayı açıp. otomatik olarak alması gerekiyor"
-                # So we show it.
-                
-                self.after(0, self.master.deiconify)
+                print(f"\n[{datetime.now().strftime('%H:%M')}] ✈️ Pilot: Checking...")
                 
                 # Run the claim process
-                self.loop.run_until_complete(self.claimer.claim_free_games_for_all_accounts())
+                results = self.loop.run_until_complete(self.claimer.claim_free_games_for_all_accounts())
                 
-                print("✈️ Pilot: Check complete. Sleeping for 6 hours...")
+                # --- SMART PILOT LOGIC ---
+                # Find next unlock time from results
+                next_unlock_iso = None
+                claimed_names = []
                 
-                # If user didn't disable it during run, hide again
-                if self.pilot_var.get():
-                     self.after(0, self.master.withdraw)
-                     
+                try:
+                    for res in results:
+                        # Collect claimed names for notification
+                        if res.get("claimed_games"):
+                            claimed_names.extend(res["claimed_games"])
+                            
+                        # Look for timer
+                        if res.get("free_games"):
+                            for g in res["free_games"]:
+                                if g.get("next_unlock"):
+                                    next_unlock_iso = g["next_unlock"]
+                                    break
+                        if next_unlock_iso: break
+                except Exception: pass
+
+                # Notification
+                if claimed_names and hasattr(self, 'tray') and self.tray and self.tray.icon:
+                    distinct_games = list(set(claimed_names))
+                    msg = f"Successfully claimed: {', '.join(distinct_games)}"
+                    try:
+                        self.tray.icon.notify(msg, "Epic Games Collected! 🎁")
+                    except: pass
+                
+                # Calculate sleep time
+                sleep_seconds = 6 * 3600 # Default 6 hours
+                if next_unlock_iso:
+                    try:
+                        unlock_dt = datetime.fromisoformat(next_unlock_iso)
+                        now = datetime.now()
+                        diff = (unlock_dt - now).total_seconds()
+                        
+                        if diff > 0:
+                            # Sleep until unlock + 5 minutes buffer
+                            sleep_seconds = int(diff) + 300 
+                            print(f"⏰ Smart Pilot: Next game unlocks in {int(diff/3600)}h {int((diff%3600)/60)}m. Sleeping until then.")
+                            
+                            # UI Update (Thread-safe invoke)
+                            self.after(0, lambda: self.lbl_next_unlock.configure(text=f"Next Unlock: {unlock_dt.strftime('%Y-%m-%d %H:%M')}", text_color="#3498DB"))
+                        else:
+                            print("⚠️ Timer says unlock passed, but maybe cached. Sleeping 1h default.")
+                            sleep_seconds = 3600
+                    except Exception as e:
+                        print(f"⚠️ Timer parse error: {e}")
+                
+                print(f"✈️ Pilot: Sleeping for {int(sleep_seconds/60)} minutes...")
+                
                 # Sleep in chunks to check for disable
-                for _ in range(6 * 60): # 6 hours in minutes
+                chunk_size = 60
+                steps = int(sleep_seconds / chunk_size)
+                for _ in range(steps): 
                     if not self.pilot_var.get(): break
-                    time.sleep(60) 
+                    time.sleep(chunk_size) 
                     
             except Exception as e:
                 print(f"✈️ Pilot Error: {e}")
-                self.after(0, self.master.deiconify) # Show window on error
-                time.sleep(60) # Wait a bit before retry
+                time.sleep(60)
 
     def _run_async_process(self):
         asyncio.set_event_loop(self.loop)

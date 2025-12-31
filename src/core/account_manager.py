@@ -156,4 +156,9 @@ class AccountManager:
                     acc["claimed_games"] = list(existing.union(new_games))
                 break
         self._save_accounts()
+        self._save_accounts()
         print(f"💾 Account status updated: {email} -> {status}")
+
+    def check_cookie_expiry(self, email: str) -> int:
+        """Check days until cookie expiry. Returns -1 if invalid."""
+        return self.cookie_manager.get_expiry_days(email)

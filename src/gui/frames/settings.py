@@ -79,8 +79,18 @@ class SettingsFrame(ctk.CTkFrame):
             var = ctk.IntVar(value=0)
             self.check_vars[email] = var
             
+            # Check expiry
+            days_left = self.account_manager.check_cookie_expiry(email)
+            expiry_text = ""
+            text_color = "text_color" # default
+            
+            if days_left != -1 and days_left < 3:
+                expiry_text = f" (⚠️ Expires in {days_left} days)"
+                
             # Use CheckBox for multi-select
-            cb = ctk.CTkCheckBox(row, text=f"{email} ({status})", variable=var, onvalue=1, offvalue=0)
+            cb = ctk.CTkCheckBox(row, text=f"{email} ({status}){expiry_text}", variable=var, onvalue=1, offvalue=0)
+            if expiry_text:
+                cb.configure(text_color="orange")
             cb.pack(side="left", padx=10, pady=5)
 
     def toggle_select_all(self):

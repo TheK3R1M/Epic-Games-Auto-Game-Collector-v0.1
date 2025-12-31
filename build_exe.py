@@ -16,7 +16,7 @@ def build():
         'src/main.py',                        # Main script
         '--name=EpicGamesCollector',          # Name of the exe
         '--onefile',                          # Single executable
-        '--console',                          # Show console (needed for CLI menu & debugging)
+        '--noconsole',                        # Hide console window
         '--clean',                            # Clean cache
         
         # Collect CustomTkinter assets (themes, etc.)

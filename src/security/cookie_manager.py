@@ -149,3 +149,24 @@ class CookieManager:
         except Exception as e:
             print(f"❌ Error moving cookies: {str(e)}")
             return False
+
+    def get_expiry_days(self, email: str) -> int:
+        """Return number of days until cookie expiration. Returns -1 if invalid/expired."""
+        try:
+            cookie_file = self._get_cookie_file(email)
+            if not os.path.exists(cookie_file):
+                # Try epic_ prefix fallback
+                if email.startswith("epic_"):
+                     cookie_file = os.path.join(self.cookies_dir, f"{email}_cookies.json")
+                
+                if not os.path.exists(cookie_file):
+                    return -1
+
+            with open(cookie_file, 'r') as f:
+                data = json.load(f)
+            
+            expires_at = datetime.fromisoformat(data["expires_at"])
+            delta = expires_at - datetime.now()
+            return delta.days
+        except Exception:
+            return -1
