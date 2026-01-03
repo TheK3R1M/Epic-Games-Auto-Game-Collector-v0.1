@@ -159,34 +159,51 @@ class GameClaimer:
         
         accounts = self.account_manager.get_all_accounts()
         
-        # Run accounts concurrently with Semaphore
-        print(f"\n🚀 Starting {len(accounts)} account(s) using Parallel Processing (Limit: 3)...\n")
+        # Run accounts sequentially to avoid browser collision and Epic detection
+        print(f"\n🚀 Starting {len(accounts)} account(s) sequentially...\n")
         
-        # Filter only active
-        active_accounts = [acc for acc in accounts if acc.get("status") == "active"]
-        skipped_count = len(accounts) - len(active_accounts)
-        if skipped_count > 0:
-            print(f"⏩ Skipped {skipped_count} disabled account(s).")
-            
-        all_results = []
-        sem = asyncio.Semaphore(3) # Max 3 browsers
+        # Execution Mode Config
+        from src.utils.config import ConfigManager
+        config = ConfigManager()
+        exec_mode = config.get("execution_mode", "sequential")
+        
+        sem_limit = 1
+        if exec_mode == "parallel":
+            sem_limit = 3
+            print(f"\n🚀 Starting {len(accounts)} account(s) in PARALLEL mode (Limit: {sem_limit})...")
+        else:
+            print(f"\n🚀 Starting {len(accounts)} account(s) in SEQUENTIAL mode...\n")
 
-        async def limited_claim(account):
+        all_results = []
+        sem = asyncio.Semaphore(sem_limit) 
+
+        async def worker(account):
             async with sem:
                 try:
-                    res = await self.claim_free_games_for_account(account["email"])
-                    return res
+                    return await self.claim_free_games_for_account(account["email"])
                 except Exception as e:
-                    print(f"❌ Worker error: {e}")
-                    return Exception(f"Worker failed: {e}")
+                    print(f"❌ Unhandled error for {account['email']}: {e}")
+                    return {
+                        "email": account["email"],
+                        "status": "error",
+                        "claimed_games": [],
+                        "already_owned": [],
+                        "errors": [str(e)]
+                    }
 
-        tasks = [limited_claim(acc) for acc in active_accounts]
-        if tasks:
-             all_results = await asyncio.gather(*tasks)
-        else:
-             print("⚠️ No active accounts to process.")
+        # Create tasks
+        tasks = [worker(acc) for acc in accounts]
         
-        # Original sequential logic removed
+        # Execute
+        if exec_mode == "parallel":
+            # Run concurrently
+            all_results = await asyncio.gather(*tasks)
+        else:
+            # Run strictly sequentially (await one by one)
+            for t in tasks:
+                 all_results.append(await t)
+                 await asyncio.sleep(2) # Brief pause between accounts
+
         
         # Deduplicate by real account key
         processed_keys = set()

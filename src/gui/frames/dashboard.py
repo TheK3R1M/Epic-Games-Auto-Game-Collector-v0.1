@@ -10,9 +10,30 @@ class TextRedirector(object):
         self.widget = widget
         self.tag = tag
 
-    def write(self, str):
+    def write(self, msg):
+        # Ignore raw newlines usually sent by print() as separate call
+        if msg == "\n":
+            self.widget.configure(state="normal")
+            self.widget.insert("end", "\n")
+            self.widget.configure(state="disabled")
+            return
+            
+        if not msg: return
+
+        timestamp = datetime.now().strftime("[%H:%M:%S] ")
+        # Prepend timestamp to each line if msg contains internal newlines
+        lines = msg.split('\n')
+        formatted_lines = []
+        for line in lines:
+            if line.strip():
+                formatted_lines.append(f"{timestamp}{line}")
+            else:
+                formatted_lines.append(line)
+        
+        final_msg = '\n'.join(formatted_lines)
+            
         self.widget.configure(state="normal")
-        self.widget.insert("end", str)
+        self.widget.insert("end", final_msg)
         self.widget.see("end")
         self.widget.configure(state="disabled")
     
@@ -136,17 +157,20 @@ class DashboardFrame(ctk.CTkFrame):
             # Enable Auto-Pilot
             print("\n✈️ Auto-Pilot ENABLED. Hiding window to System Tray...")
             
-            self.create_tray_icon()
-            self.master.withdraw() # Hide window
+            # Delegate tray management to main App class
+            if hasattr(self.master, 'minimize_to_tray'):
+                self.master.minimize_to_tray()
+            else:
+                self.master.withdraw()
+            
             threading.Thread(target=self._run_pilot_loop, daemon=True).start()
         else:
             # Disable
             print("\n✈️ Auto-Pilot DISABLED.")
-            # If the user toggles it OFF while window is open, ensure tray is gone (it should be)
-            try:
-                if hasattr(self, 'tray') and self.tray:
-                    self.tray.stop()
-            except: pass
+            # Tray stopping is now handled by the user explicitly restoring window or closing app.
+            # We don't necessarily kill the tray when pilot stops, unless we want to.
+            # But the user might have minimized manually.
+            pass
 
     def _run_pilot_loop(self):
         """Background loop for Auto-Pilot (Smart Mode)."""
@@ -194,7 +218,7 @@ class DashboardFrame(ctk.CTkFrame):
                         except: pass
                 
                 # Calculate sleep time
-                sleep_seconds = 6 * 3600 # Default 6 hours
+                sleep_seconds = 4 * 3600 # Default 4 hours (User Request)
                 if next_unlock_iso:
                     try:
                         unlock_dt = datetime.fromisoformat(next_unlock_iso)
@@ -259,30 +283,7 @@ class DashboardFrame(ctk.CTkFrame):
         except Exception:
             pass
 
-    def create_tray_icon(self):
-        """Ensure Tray icon is running."""
-        if hasattr(self, 'tray') and self.tray and self.tray.icon:
-            return # Already running
-            
-        from src.gui.tray import SystemTrayIcon
-        
-        def show_callback():
-            self.master.deiconify()
-            # If we are NOT in pilot mode, maybe we destroy tray on show?
-            # But if pilot is ON, tray should stay?
-            # Current implementation of 'SystemTrayIcon' might be blocking or thread-based.
-            # Let's check tray.py. As seen in previous context, it likely uses pystray.
-            # Usually pystray.run() blocks. So it should run in thread if blocking, 
-            # Or if tray.py handles it.
-            # The previous code had self.tray.run().
-            
-        def exit_callback():
-            self.master.quit()
-            sys.exit(0)
-
-        self.tray = SystemTrayIcon(self.master, show_callback, exit_callback)
-        self.tray.setup()
-        self.tray.run()
+    # Tray methods removed - delegated to self.master
 
     def _reset_ui(self):
         self.btn_start.configure(text="Start Claiming", fg_color=['#3B8ED0', '#1F6AA5'], hover_color=['#36719F', '#144870'])

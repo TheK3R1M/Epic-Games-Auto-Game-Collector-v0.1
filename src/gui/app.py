@@ -102,34 +102,92 @@ class GameClaimerApp(ctk.CTk):
                 
             frame.lift()
 
+        
+        # Start Web Dashboard (if enabled)
+        self.start_web_dashboard()
+
+    def start_web_dashboard(self):
+        if hasattr(self, 'web_dashboard') and self.web_dashboard:
+            return
+
+        from src.utils.config import ConfigManager
+        config = ConfigManager()
+        if config.get("web_dashboard_enabled", True):
+            try:
+                from src.web.server import WebDashboard
+                port = config.get("web_port", 5000)
+                
+                # Pass self (App) as controller
+                self.web_dashboard = WebDashboard(self)
+                
+                # Run in daemon thread
+                t = threading.Thread(target=self.web_dashboard.run, args=(port,), daemon=True)
+                t.start()
+                print(f"🌐 Web Dashboard started at http://localhost:{port}")
+            except Exception as e:
+                print(f"❌ Failed to start Web Dashboard: {e}")
+
     def run(self):
         # Handle Close Event for Tray
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
         self.mainloop()
         
+    def create_tray_icon(self):
+        """Create and run the system tray icon in a separate daemon thread."""
+        if hasattr(self, 'tray') and self.tray:
+            return # Already running
+            
+        from src.gui.tray import SystemTrayIcon
+        
+        def show_callback():
+            self.after(0, self.deiconify)
+            
+        def exit_callback():
+            self.after(0, self.quit_app)
+
+        self.tray = SystemTrayIcon(self, show_callback, exit_callback)
+        self.tray.setup()
+        
+        # Run pystray in a separate thread so it doesn't block tkinter
+        threading.Thread(target=self.tray.run, daemon=True).start()
+
+    def minimize_to_tray(self):
+        """Standard method to hide window and ensure tray is active."""
+        self.create_tray_icon()
+        self.withdraw()
+        
+        # Optional: Notification
+        from src.utils.config import ConfigManager
+        if ConfigManager().get("minimize_to_tray", True):
+             pass # Maybe a toast? "Minimized to tray"
+
+    def quit_app(self):
+        """Clean shutdown."""
+        if hasattr(self, 'tray') and self.tray:
+            self.tray.stop()
+        self.quit()
+        sys.exit(0)
+
     def on_closing(self):
         """Handle window close event."""
         from src.utils.config import ConfigManager
         config = ConfigManager()
+        is_tray_enabled = config.get("minimize_to_tray", True)
         
-        if config.get("minimize_to_tray", True):
-            # Minimize to tray
-            # Ensure tray icon exists (managed by Dashboard for now)
-            dashboard = self.frames.get("dashboard")
-            if dashboard:
-                try:
-                    dashboard.create_tray_icon()
-                    self.withdraw()
-                    print("\n[GUI] Minimized to tray.")
-                    from tkinter import messagebox
-                    # Optional toast or just console
-                    return
-                except Exception as e:
-                    print(f"Error minimizing to tray: {e}")
+        print(f"[GUI] Close Request. Tray Enabled in Config: {is_tray_enabled}")
         
-        # Quit
-        self.quit()
-        sys.exit(0)
+        if is_tray_enabled:
+            # Check if tray icon is actually valid/running?
+            # Just try to minimize
+            try:
+                self.minimize_to_tray()
+                print("[GUI] Window withdrawn to tray.")
+            except Exception as e:
+                print(f"❌ Tray minimize failed: {e}")
+                self.quit_app()
+        else:
+            print("[GUI] Quitting app directly.")
+            self.quit_app()
 
 if __name__ == "__main__":
     app = GameClaimerApp()

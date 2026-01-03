@@ -25,8 +25,11 @@ class ConfigManager:
         "minimize_to_tray": True,
         "notifications": True,
         "auto_update": False,
-        "run_on_startup": False, # Synced with Task Scheduler state where possible
-        "custom_data_path": ""
+        "run_on_startup": False, 
+        "custom_data_path": "",
+        "headless_mode": False,
+        "web_dashboard_enabled": True,
+        "web_port": 5000
     }
     
     def __init__(self):

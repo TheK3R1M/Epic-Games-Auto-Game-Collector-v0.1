@@ -52,6 +52,18 @@ class SettingsFrame(ctk.CTkFrame):
         self.advanced_frame = ctk.CTkFrame(self.scroll_container, fg_color="transparent")
         self.advanced_frame.grid(row=3, column=0, padx=10, pady=(0, 20), sticky="ew")
         
+        # Execution Mode
+        self.exec_var = ctk.BooleanVar(value=(self.config_manager.get("execution_mode", "sequential") == "parallel"))
+        self._create_switch(self.advanced_frame, "Parallel Processing",
+                            "Process 3 accounts at once (Faster but higher risk)", 
+                            self.exec_var, self.toggle_execution_mode).pack(fill="x", pady=5)
+                            
+        # Stealth Mode (Headless)
+        self.headless_var = ctk.BooleanVar(value=self.config_manager.get("headless_mode", True))
+        self._create_switch(self.advanced_frame, "Stealth Mode (Headless)",
+                            "Hide browser windows completely (Background operation)",
+                            self.headless_var, lambda: self.update_config("headless_mode", self.headless_var.get())).pack(fill="x", pady=5)
+
         # Auto Update
         self.update_var = ctk.BooleanVar(value=self.config_manager.get("auto_update", False))
         self._create_switch(self.advanced_frame, "Automatic Updates",
@@ -193,7 +205,7 @@ class SettingsFrame(ctk.CTkFrame):
     def _run_browser_login(self):
         try:
             connector = EpicDrissionConnector()
-            if connector.initialize():
+            if connector.initialize(force_visible=True):
                 email = connector.login_new_account()
                 connector.close()
                 if email:
@@ -243,3 +255,7 @@ class SettingsFrame(ctk.CTkFrame):
         else:
             ok, msg = unregister_startup_task("EpicAutoCollector")
             print(f"[GUI] Startup Unregister: {msg}")
+
+    def toggle_execution_mode(self):
+        mode = "parallel" if self.exec_var.get() else "sequential"
+        self.update_config("execution_mode", mode)

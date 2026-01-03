@@ -30,7 +30,14 @@ class EpicDrissionConnector:
             
             # Let DrissionPage find a free port automatically for maximum reliability
             co.auto_port() 
-            co.headless(False) 
+            
+            # Config: Check Headless Mode
+            from src.utils.config import ConfigManager
+            config = ConfigManager()
+            is_headless = config.get("headless_mode", True)
+            print(f"   👻 Stealth Mode: {'ENABLED' if is_headless else 'DISABLED'}")
+            
+            co.headless(is_headless) 
             co.set_argument('--no-sandbox')
             co.set_argument('--disable-gpu')
             co.set_argument('--disable-dev-shm-usage')
@@ -110,8 +117,9 @@ class EpicDrissionConnector:
                         self._save_cookies(email) 
                         return True
                     else:
-                        print(f"   ❌ Session re-entry failed. Cookies might be expired.")
-                        # HOTFIX: Delete invalid cookies to prevent loop
+                        print(f"   ❌ Session re-entry failed. Redirected to: {self.page.url}")
+                        # CRITICAL: Delete invalid cookies to prevent infinite loop
+                        print(f"   🗑️ Invalidating bad cookies for {email}...")
                         self.cookie_manager.delete_cookies(email)
                         return False
                 except Exception as e:
@@ -204,10 +212,20 @@ class EpicDrissionConnector:
                  self.page.get(login_url, timeout=15)
 
             print("\n" + "!"*40)
-            print("   PLEASE SIGN IN IN THE SMALL BROWSER WINDOW")
+            print("   KÜÇÜK PENCEREDE GİRİŞ YAPIN")
+            print("   (PLEASE SIGN IN IN THE SMALL BROWSER WINDOW)")
             print("!"*40 + "\n")
             
             print("   ⏳ Monitoring login state (Max 5 mins)...")
+            
+            # Config: Check Headless Mode
+            from src.utils.config import ConfigManager
+            config = ConfigManager()
+            is_headless = config.get("headless_mode", True)
+            
+            # FORCE VISIBLE if requested (e.g. for login)
+            if force_visible:
+                is_headless = False
             
             # Wait loop
             max_wait = 300 
@@ -379,157 +397,67 @@ class EpicDrissionConnector:
         return []
 
     def get_free_games(self) -> List[Dict]:
-        """Scrape free games using robust DOM method first, API fallback."""
-        print("🎮 Checking free games (DOM Method)...")
+        """Scrape free games using DrissionPage."""
+        print("🎮 Checking free games...")
         self.page.get("https://store.epicgames.com/en-US/free-games")
-        # Optimization: Wait for 'Free Now' text instead of hard sleep
-        # timeout=10 is safe.
-        if self.page.wait.ele('text:Free Now', timeout=10):
-             print("   ✅ Page loaded.")
-        else:
-             print("   ⚠️ Page load slow, proceeding...")
+        time.sleep(3)
         
         games = []
         try:
-            # HOTFIX: Scrape href directly to avoid 404s
-            # Find the 'Free Now' badges
-            badges = self.page.eles('text:Free Now')
+            # Use logic similar to 'DOM fallback' from original connector
+            # Look for cards with "Free Now"
             
-            for badge in badges:
-                try:
-                    # We need to find the parent <a> tag.
-                    # Usually it's up 3-5 levels or so.
-                    # Safer: Find the closest 'a' ancestor with an href
-                    card_link = badge.parent('tag:a') 
-                    if not card_link:
-                         # Try going up a few levels manually if direct parent search fails
-                         curr = badge
-                         for _ in range(6):
-                             curr = curr.parent()
-                             if curr.tag == 'a':
-                                 card_link = curr
-                                 break
-                    
-                    if card_link and card_link.attr('href'):
-                        # --- FILTER: EXCLUDE COMING SOON ---
-                        card_text = card_link.text.lower()
-                        if "coming soon" in card_text or "yakında" in card_text:
-                            print(f"   ⚠️ Skipping 'Coming Soon' game.")
-                            continue
-
-                        # --- TITLE EXTRACTION ---
-                        # Try to find the h6 or class containing title within the card
-                        title_el = card_link.ele('tag:h6') or \
-                                   card_link.ele('.css-1h2ruwl') or \
-                                   card_link.ele('[data-testid=offer-title-info-title]')
-                        
-                        title = ""
-                        if title_el:
-                            title = title_el.text.strip()
-                        
-                        if not title:
-                            # Fallback to aria-label cleaning
-                            raw_title = card_link.attr('aria-label') or "Free Game"
-                            title = raw_title.replace("Free Game, ", "").replace(", Free Game", "")
-                            
-                        # Final Cleanup
-                        if "claim free" in title.lower():
-                            # If we still got garbage, try checking image alt
-                            img = card_link.ele('tag:img')
-                            if img: title = img.attr('alt')
-                            
-                        raw_url = card_link.attr('href')
-                        if not raw_url.startswith("http"):
-                             game_url = f"https://store.epicgames.com{raw_url}"
-                        else:
-                             game_url = raw_url
-                        
-                        # Filter out non-game links
-                        if "/p/" in game_url or "/bundles/" in game_url:
-                             print(f"   found: {title} -> {game_url}")
-                             games.append({'name': title, 'url': game_url})
-
-                except Exception as e:
-                    print(f"   ⚠️ extraction error: {e}")
-                    pass
+            # DrissionPage .eles() finds all
+            # Assuming structure: visible 'Free Now' text in some span
             
-            # --- TIMER SCRAPING (Smart Pilot Data) ---
-            # Try to find "Unlocking in" or "Free Now until"
-            next_unlock_str = None
+            # Strategy: Find all links containing '/p/' that are inside a container with 'Free Now'
+            # This is tricky with simple selectors. 
+            # Alternative: Get all "VaultOfferCard" equivalent
+            
+            # Let's try searching text "Free Now" and going up to the card
+            free_badges = self.page.eles('text:Free Now')
+            for badge in free_badges:
+                # Go up to finding the link
+                # .parent() or .prev()... 
+                # This depends heavily on DOM structure which changes.
+                
+                # Simplified: Get all links, check if they look like game pages and have price 0
+                pass
+
+            # Better Strategy: JSON API approach using DrissionPage
+            # We can request the API URL directly since DrissionPage behaves like a browser
+            api_url = 'https://store-site-backend-static-ipv4.ak.epicgames.com/freeGamesPromotions?locale=en-US&country=US&allowCountries=US'
+            self.page.get(api_url)
             try:
-                # 1. Unlocking in... (Countdown)
-                # Selectors: [data-testid="timer-remaining-days"], etc.
-                days_el = self.page.ele('[data-testid=timer-remaining-days]')
-                if days_el:
-                    # If countdown exists, we can calculate seconds
-                    d = int(days_el.text or 0)
-                    h = int(self.page.ele('[data-testid=timer-remaining-hours]').text or 0)
-                    m = int(self.page.ele('[data-testid=timer-remaining-minutes]').text or 0)
-                    s = int(self.page.ele('[data-testid=timer-remaining-seconds]').text or 0)
-                    
-                    total_seconds = (d*86400) + (h*3600) + (m*60) + s
-                    # Return as special metadata in the list if possible, or just print for now?
-                    # Better: Return a tuple or dict. But signature is List[Dict].
-                    # We can append a special "metadata" dict at the end? Or attach to first game?
-                    # Let's attach to the first game if exists, or return separate (breaking change).
-                    # Safest: Attach 'next_unlock' to ALL games found.
-                    from datetime import datetime, timedelta
-                    unlock_dt = datetime.now() + timedelta(seconds=total_seconds)
-                    next_unlock_str = unlock_dt.isoformat()
-                    print(f"   ⏳ Next unlock in: {d}d {h}h {m}m {s}s ({next_unlock_str})")
-
-                # 2. If no countdown, maybe "Free Now - Dec 31 at 07:00 PM"
-                # This helps "Current Game End"
-                # <time datetime="2025-12-31T16:00:00.000Z">
-                # We want the *second* time element usually (End time)
-                times = self.page.eles('tag:time')
-                promo_end_str = None
-                if times and len(times) >= 2:
-                    # Usually pairs: Start - End. 
-                    # We grab the last one associated with the free banner? Hard to link.
-                    # Just grab the next future date from list?
-                    pass
+                # If browser displays JSON, we can get innerText of body
+                content = self.page.ele('tag:body').text
+                data = json.loads(content)
+                
+                # Parsing logic (same as original)
+                elements = data.get('data', {}).get('Catalog', {}).get('searchStore', {}).get('elements', [])
+                for el in elements:
+                    promos = el.get('promotions')
+                    if not promos: continue
+                    offers = promos.get('promotionalOffers', [])
+                    if offers and offers[0].get('promotionalOffers'):
+                        # It has offers
+                        title = el.get('title')
+                        slug = el.get('productSlug') or el.get('urlSlug')
+                        if not slug: continue
+                        
+                        # Price check (ensure it is actually free)
+                        price = el.get('price', {}).get('totalPrice', {}).get('discountPrice', -1)
+                        if price == 0:
+                            url = f"https://store.epicgames.com/en-US/p/{slug}"
+                            games.append({'name': title, 'url': url})
             except Exception as e:
-                print(f"   ⚠️ Timer scrape error: {e}")
-
-            if not games:
-                print("   ⚠️ DOM scrape yielded 0 games. Using strict API fallback.")
-                return self._get_free_games_api_fallback()
-            
-            # Attach timer info to games for Dashboard to use
-            if next_unlock_str:
-                for g in games:
-                    g['next_unlock'] = next_unlock_str
-
+                print(f"   ⚠️ API parse failed: {e}")
+                
             return games
             
         except Exception as e:
             print(f"❌ Error getting games: {e}")
             return []
-
-    def _get_free_games_api_fallback(self):
-        """Original API method as fallback."""
-        games = []
-        try:
-            api_url = 'https://store-site-backend-static-ipv4.ak.epicgames.com/freeGamesPromotions?locale=en-US&country=US&allowCountries=US'
-            self.page.get(api_url)
-            content = self.page.ele('tag:body').text
-            data = json.loads(content)
-            elements = data.get('data', {}).get('Catalog', {}).get('searchStore', {}).get('elements', [])
-            for el in elements:
-                promos = el.get('promotions')
-                if not promos: continue
-                offers = promos.get('promotionalOffers', [])
-                if offers and offers[0].get('promotionalOffers'):
-                    title = el.get('title')
-                    slug = el.get('productSlug') or el.get('urlSlug')
-                    if not slug: continue
-                    price = el.get('price', {}).get('totalPrice', {}).get('discountPrice', -1)
-                    if price == 0:
-                        url = f"https://store.epicgames.com/en-US/p/{slug}"
-                        games.append({'name': title, 'url': url})
-        except: pass
-        return games
 
     def claim_game(self, url: str, name: str) -> bool:
         """Claim a specific game with robust login enforcement."""
@@ -684,25 +612,11 @@ class EpicDrissionConnector:
                         if self.page.ele('text:-100%'): price_valid = True
 
                     # --- DEBUG: DUMP HTML ---
-                    except: pass
-
-                    # --- DEEP DEBUGGING: DUMP IFRAME & BUTTON ANALYSIS ---
                     try:
-                        # Find the checkout iframe specifically
-                        checkout_frame = None
-                        for f in self.page.frames:
-                            if any(x in f.url for x in ['/purchase', '/checkout']) or 'payment' in f.url:
-                                checkout_frame = f
-                                break
-                        
-                        if checkout_frame:
-                            with open(f"debug_iframe_checkout_{name}.html", "w", encoding="utf-8") as f:
-                                f.write(checkout_frame.html)
-                            print(f"   🐞 DEBUG: Checkout iframe HTML dumped to debug_iframe_checkout_{name}.html")
-                        else:
-                             print("   🐞 DEBUG: No specific checkout iframe found for dumping.")
-                    except Exception as e:
-                        print(f"   🐞 DEBUG ERROR: {e}")
+                        with open(f"checkout_full_{name}.html", "w", encoding="utf-8") as f:
+                            f.write(self.page.html)
+                        print(f"   📄 Checkout HTML dumped to checkout_full_{name}.html")
+                    except: pass
 
                     # --- PLACE ORDER ---
                     print("   🔎 Looking for 'Place Order' button (Standardizing detection)...")
@@ -720,7 +634,7 @@ class EpicDrissionConnector:
                                     if btn: return btn
                                     
                                     # Try by exact text match inside the specific button area
-                                    # Multilingual support (Turkish/English)
+                                    # "SİPARİŞ VER" is the specific label in Turkish
                                     btn_text_el = frame.ele('text=SİPARİŞ VER') or \
                                                   frame.ele('text=Place Order') or \
                                                   frame.ele('text=Siparişi Ver')
@@ -749,17 +663,6 @@ class EpicDrissionConnector:
 
                     place_btn = find_order_btn()
 
-                    # DEBUG: Analyze found button
-                    if place_btn:
-                         try:
-                             print(f"   🐞 DEBUG: Found Button Info:")
-                             print(f"      - Tag: {place_btn.tag}")
-                             print(f"      - Text: {place_btn.text}")
-                             print(f"      - Classes: {place_btn.attr('class')}")
-                             print(f"      - ID: {place_btn.attr('id')}")
-                             print(f"      - Data-TestID: {place_btn.attr('data-testid')}")
-                         except: pass
-
                     if place_btn:
                         print(f"   🖱️ Preparing to click 'Place Order' ({place_btn.text})...")
                         
@@ -768,11 +671,11 @@ class EpicDrissionConnector:
                         # The real agreement box is usually inside 'payment-order-confirm'
                         def find_agree_box():
                              # Try to find the container first
-                             container = self.page.ele('.payment-order-confirm') or \
-                                         self.page.ele('.payment-confirm-container')
+                             container = self.page.ele('.payment-order-confirm', timeout=1) or \
+                                         self.page.ele('.payment-confirm-container', timeout=1)
                              if container:
-                                 box = container.ele('.payment-check-box__input') or \
-                                       container.ele('.payment-check-box__inner')
+                                 box = container.ele('.payment-check-box__input', timeout=1) or \
+                                       container.ele('.payment-check-box__inner', timeout=1)
                                  if box: return box
                              
                              # Search in frames but be specific about the parent
@@ -781,16 +684,16 @@ class EpicDrissionConnector:
                                      frame = self.page.get_frame(f_selector, timeout=1)
                                      if frame:
                                          # Look for the agreement text nearby
-                                         agree_text = frame.ele('text:yönetteminin yetkin kullanıcısı') or \
-                                                      frame.ele('text:18 yaşından büyük')
+                                         agree_text = frame.ele('text:yönetteminin yetkin kullanıcısı', timeout=1) or \
+                                                      frame.ele('text:18 yaşından büyük', timeout=1)
                                          if agree_text:
                                              # Finding the checkbox via parent/sibling from the text
                                              container = agree_text.parent('.payment-order-confirm')
                                              if container:
-                                                 box = container.ele('.payment-check-box__input')
+                                                 box = container.ele('.payment-check-box__input', timeout=1)
                                                  if box: return box
                                              # Fallback to any checkbox in THAT frame
-                                             return frame.ele('.payment-check-box__input')
+                                             return frame.ele('.payment-check-box__input', timeout=1)
                                  except: pass
                              return None
 
